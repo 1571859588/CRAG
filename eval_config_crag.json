@@ -1,0 +1,18 @@
+{
+    "//": "CRAG baseline evaluation config for MAEDA benchmark",
+    "tool": "openroad",
+    "model": "mimo-v2.5",
+    "base_url": "https://token-plan-cn.xiaomimimo.com/v1",
+    "api_key": "tp-c3v2dceh8zzrrc7l51w6me4p4rr6miea2rejwuqkewfkj04o",
+    "input_path": "experiments/regression_test/MAEDA-DATE26/baselines/CRAG/results/crag_maeda_eval_input.json",
+    "gt_path": "experiments/regression_test/MAEDA-DATE26/baselines/CRAG/results/crag_maeda_eval_input.json",
+    "output_path": "experiments/regression_test/MAEDA-DATE26/baselines/CRAG/results/crag_maeda_eval_result.json",
+    "max_threads": 10,
+    "eval_keypoints": true,
+    "eval_hallucination": true,
+    "short_commands_path": "experiments/regression_test/resources/short_commands.txt",
+    "blacklist_commands_path": "experiments/regression_test/resources/blacklist_commands.txt",
+    "blacklist_examples_path": "experiments/regression_test/resources/blacklist_examples.txt",
+    "valid_commands_path": "experiments/regression_test/resources/valid_commands.txt",
+    "command_docs_path": "experiments/regression_test/resources/command_content_mapping_openroad.json"
+}
