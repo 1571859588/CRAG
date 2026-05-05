@@ -96,7 +96,9 @@ We use the **fine-tuned BGE-large-en-v1.5** model (same as Self-RAG baseline):
 
 ### Prerequisites
 
-1. **Conda environment**: `conda activate huada_docqa_demo_release_v1` (includes `vllm`, `torch`, `transformers`, `sentence_transformers`, `faiss`)
+1. **uv venv** (recommended): `/mnt/public/sichuan_a/nyt/uv_envs/.venv_crag_maeda` (includes `vllm`, `torch`, `transformers`, `sentence_transformers`, `faiss`, `sklearn`)
+   - Install: `cd /mnt/public/sichuan_a/nyt/uv_envs && uv venv .venv_crag_maeda --python 3.10 && uv pip install -p .venv_crag_maeda/bin/python -r /mnt/public/sichuan_a/nyt/uv_envs/requirements_crag_maeda.txt`
+   - Or fallback conda env: `conda activate huada_docqa_demo_release_v1`
 2. **Generator model**: `/mnt/public/sichuan_a/nyt/models/RAG-EDA/models/finetuned-models/generator/Qwen1.5-14B-Chat/fine-tuned-model-step2-merged`
 3. **BGE embedding model**: `/mnt/public/sichuan_a/nyt/models/RAG-EDA/models/finetuned-models/embedding/bge-large-en-v1.5/output_flagembedding`
 4. **T5 evaluator**: Will auto-download `gsiresearch/t5-large-compact-v1` from HuggingFace (or set `EVALUATOR_PATH` env var to local path)

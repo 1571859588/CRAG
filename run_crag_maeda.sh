@@ -7,6 +7,20 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# ======================== Environment ========================
+# Activate uv venv (or conda env as fallback)
+if [ -d "/mnt/public/sichuan_a/nyt/uv_envs/.venv_crag_maeda" ]; then
+    source /mnt/public/sichuan_a/nyt/uv_envs/.venv_crag_maeda/bin/activate
+    echo "Activated uv venv: .venv_crag_maeda"
+elif [ -n "$(conda env list 2>/dev/null | grep huada_docqa_demo_release_v1)" ]; then
+    conda activate huada_docqa_demo_release_v1
+    echo "Activated conda env: huada_docqa_demo_release_v1"
+else
+    echo "WARNING: No suitable environment found. Install with:"
+    echo "  cd /mnt/public/sichuan_a/nyt/uv_envs && uv venv .venv_crag_maeda --python 3.10"
+    echo "  uv pip install -p .venv_crag_maeda/bin/python -r requirements_crag_maeda.txt"
+fi
+
 # ======================== Configuration ========================
 MODEL_PATH="/mnt/public/sichuan_a/nyt/models/RAG-EDA/models/finetuned-models/generator/Qwen1.5-14B-Chat/fine-tuned-model-step2-merged"
 EVALUATOR_PATH="${EVALUATOR_PATH:-gsiresearch/t5-large-compact-v1}"
