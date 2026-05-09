@@ -23,7 +23,7 @@ fi
 
 # ======================== Configuration ========================
 MODEL_PATH="/mnt/public/sichuan_a/nyt/models/RAG-EDA/models/finetuned-models/generator/Qwen1.5-14B-Chat/fine-tuned-model-step2-merged"
-EVALUATOR_PATH="${EVALUATOR_PATH:-gsiresearch/t5-large-compact-v1}"
+EVALUATOR_PATH="${EVALUATOR_PATH:-/mnt/public/sichuan_a/nyt/models/RAG-EDA/models/finetuned-models/reranker/bge-reranker-large/output_flagembedding}"
 BGE_MODEL_PATH="/mnt/public/sichuan_a/nyt/models/RAG-EDA/models/finetuned-models/embedding/bge-large-en-v1.5/output_flagembedding"
 CORPUS_PATH="/mnt/public/sichuan_a/nyt/MAEDA/huada-docqa-demo/huada-docqa-demo/resources/knowledge_openroad_MAEDA.json"
 FAISS_INDEX_DIR="/mnt/public/sichuan_a/nyt/MAEDA/huada-docqa-demo/huada-docqa-demo/resources/faiss_bge_selfrag"
@@ -33,8 +33,8 @@ NDOCS=10
 RETRIEVAL_TOPK=10
 MAX_NEW_TOKENS=512
 METHOD="crag"
-UPPER_THRESHOLD=0.592
-LOWER_THRESHOLD=0.995
+UPPER_THRESHOLD=0.5
+LOWER_THRESHOLD=-1.0
 DECOMPOSE_MODE="selection"
 
 DATA_DIR="./maeda_crag_data"
@@ -105,9 +105,22 @@ step_postprocess() {
 
 step_eval() {
     echo "=== Step 5: MAEDA Evaluation ==="
-    cd "$SCRIPT_DIR/../.."
+    if [ ! -f "$RESULTS_DIR/crag_maeda_eval_input.json" ]; then
+        echo "Error: $RESULTS_DIR/crag_maeda_eval_input.json not found. Run 'postprocess' first."
+        exit 1
+    fi
+
+    EVAL_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+    # Resolve absolute paths for input/output
+    ABS_INPUT="$(cd "$(dirname "$RESULTS_DIR/crag_maeda_eval_input.json")" && pwd)/$(basename "$RESULTS_DIR/crag_maeda_eval_input.json")"
+    ABS_OUTPUT="$(cd "$(dirname "$RESULTS_DIR/crag_maeda_eval_result.json")" 2>/dev/null && pwd)/$(basename "$RESULTS_DIR/crag_maeda_eval_result.json")" || ABS_OUTPUT="$RESULTS_DIR/crag_maeda_eval_result.json"
+
+    cd "$EVAL_ROOT"
     python3 run_eval.py \
-        --config "MAEDA-DATE26/baselines/CRAG/eval_config_crag.json"
+        --config "$SCRIPT_DIR/eval_config_crag.json" \
+        --input_path "$ABS_INPUT" \
+        --gt_path "$ABS_INPUT" \
+        --output_path "$ABS_OUTPUT"
     cd "$SCRIPT_DIR"
     echo "Step 5 done."
 }

@@ -4,7 +4,7 @@ CRAG inference on MAEDA benchmark with Qwen1.5-14B-Chat generator.
 
 CRAG (Corrective RAG) pipeline:
 1. Retrieve passages using BGE (pre-computed)
-2. Score retrieved passages with T5 evaluator (correct/ambiguous/incorrect)
+2. Score retrieved passages with BGE-reranker cross-encoder (correct/ambiguous/incorrect)
 3. Based on scores:
    - Correct: refine knowledge internally (extract relevant strips)
    - Ambiguous: combine internal + external knowledge
@@ -13,6 +13,10 @@ CRAG (Corrective RAG) pipeline:
 
 For MAEDA, "external knowledge" is replaced by the top BGE-retrieved passages
 since we don't have web search access for the OpenROAD domain.
+
+The original CRAG uses a T5 evaluator (gsiresearch/t5-large-compact-v1) for retrieval
+assessment. Since HuggingFace is unreachable, we use the local fine-tuned
+BGE-reranker-large cross-encoder instead, which serves the same purpose.
 """
 
 import argparse
@@ -22,7 +26,7 @@ import re
 from tqdm import tqdm
 
 import torch
-from transformers import T5Tokenizer, T5ForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from vllm import LLM, SamplingParams
 
 
@@ -95,7 +99,7 @@ def extract_strips_from_psg(psg, mode="excerption"):
 
 
 def select_relevants(strips, query, tokenizer, model, device, top_n=5):
-    """Select most relevant strips from a passage using T5 cross-encoder."""
+    """Select most relevant strips from a passage using cross-encoder."""
     model = model.to(device)
     max_length = 512
     strips_data = []
@@ -103,14 +107,12 @@ def select_relevants(strips, query, tokenizer, model, device, top_n=5):
         if len(p.split()) < 4:
             scores = -1.0
         else:
-            input_content = query + " [SEP] " + p
-            inputs = tokenizer(input_content, return_tensors="pt",
-                              padding="max_length", truncation=True, max_length=max_length)
+            inputs = tokenizer(query, p, return_tensors="pt",
+                              padding=True, truncation=True, max_length=max_length)
             try:
                 with torch.no_grad():
-                    outputs = model(inputs["input_ids"].to(device),
-                                  attention_mask=inputs["attention_mask"].to(device))
-                scores = float(outputs["logits"].cpu())
+                    outputs = model(**{k: v.to(device) for k, v in inputs.items()})
+                scores = float(outputs.logits[0][0].cpu())
             except Exception:
                 scores = -1.0
         strips_data.append((scores, p, i))
@@ -121,24 +123,21 @@ def select_relevants(strips, query, tokenizer, model, device, top_n=5):
 
 
 def score_retrieved_docs(queries, passages_list, tokenizer, model, device, n_docs):
-    """Score each retrieved document using T5 evaluator."""
+    """Score each retrieved document using cross-encoder reranker."""
     model.eval()
     scores = []
 
-    # Flatten: for each query, score each of its n_docs passages
     for q_idx, (query, passages_text) in enumerate(zip(queries, passages_list)):
         psgs = passages_text.split(' [sep] ')
         for p_idx, psg in enumerate(psgs[:n_docs]):
-            if psg.strip().endswith('[SEP]') or not psg.strip():
+            if not psg.strip():
                 scores.append(-1.0)
                 continue
-            input_content = query + " [SEP] " + psg
-            inputs = tokenizer(input_content, return_tensors="pt",
-                              padding="max_length", truncation=True, max_length=512)
+            inputs = tokenizer(query, psg, return_tensors="pt",
+                              padding=True, truncation=True, max_length=512)
             with torch.no_grad():
-                outputs = model(inputs["input_ids"].to(device),
-                              attention_mask=inputs["attention_mask"].to(device))
-            scores.append(float(outputs["logits"].cpu()))
+                outputs = model(**{k: v.to(device) for k, v in inputs.items()})
+            scores.append(float(outputs.logits[0][0].cpu()))
 
     return scores
 
@@ -194,7 +193,7 @@ def main():
     parser.add_argument('--generator_path', type=str, required=True,
                         help="Path to Qwen1.5-14B-Chat generator model")
     parser.add_argument('--evaluator_path', type=str, required=True,
-                        help="Path to T5 evaluator model for retrieval assessment")
+                        help="Path to cross-encoder reranker model for retrieval assessment (BGE-reranker or T5)")
     parser.add_argument('--input_file', type=str, required=True,
                         help="Path to MAEDA benchmark JSON")
     parser.add_argument('--retrieval_results', type=str, required=True,
@@ -208,10 +207,10 @@ def main():
     parser.add_argument('--ndocs', type=int, default=10,
                         help="Number of documents to retrieve per question")
     parser.add_argument('--batch_size', type=int, default=8)
-    parser.add_argument('--upper_threshold', type=float, default=0.592,
-                        help="Upper threshold for T5 evaluator (>= → correct)")
-    parser.add_argument('--lower_threshold', type=float, default=-0.995,
-                        help="Lower threshold for T5 evaluator (>= → ambiguous)")
+    parser.add_argument('--upper_threshold', type=float, default=0.5,
+                        help="Upper threshold for reranker (>= → correct)")
+    parser.add_argument('--lower_threshold', type=float, default=-1.0,
+                        help="Lower threshold for reranker (>= → ambiguous)")
     parser.add_argument('--max_new_tokens', type=int, default=512,
                         help="Max tokens for generation")
     parser.add_argument('--decompose_mode', type=str, default="selection",
@@ -228,10 +227,10 @@ def main():
                                      max_tokens=args.max_new_tokens,
                                      skip_special_tokens=False)
 
-    # Load T5 evaluator
-    print(f"Loading T5 evaluator from {args.evaluator_path}...")
-    eval_tokenizer = T5Tokenizer.from_pretrained(args.evaluator_path)
-    eval_model = T5ForSequenceClassification.from_pretrained(args.evaluator_path, num_labels=1)
+    # Load cross-encoder reranker (BGE-reranker-large or T5)
+    print(f"Loading cross-encoder reranker from {args.evaluator_path}...")
+    eval_tokenizer = AutoTokenizer.from_pretrained(args.evaluator_path)
+    eval_model = AutoModelForSequenceClassification.from_pretrained(args.evaluator_path, num_labels=1)
     device = torch.device(args.device) if torch.cuda.is_available() else torch.device("cpu")
     eval_model.to(device)
 
@@ -266,7 +265,7 @@ def main():
             psgs = [f"{c['title']} // {c['text'].strip().replace(chr(10), ' ')}" for c in ctxs]
             passages_list.append(' [sep] '.join(psgs))
 
-        print("Scoring retrieved documents with T5 evaluator...")
+        print("Scoring retrieved documents with cross-encoder reranker...")
         scores = score_retrieved_docs(queries, passages_list, eval_tokenizer,
                                       eval_model, device, args.ndocs)
         identification_flag = process_flag(scores, args.ndocs,
